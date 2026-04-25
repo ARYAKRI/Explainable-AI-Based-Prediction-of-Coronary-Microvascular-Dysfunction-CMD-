@@ -1,2 +1,4 @@
 # Explainable-AI-Based-Prediction-of-Coronary-Microvascular-Dysfunction-CMD-
 Explainable AI-Based Prediction of Coronary Microvascular Dysfunction (CMD) from Subclinical Cardiac Indicators 
+
+  Coronary Microvascular Dysfunction (CMD) is an important but poorly recognized cardiovascular disorder that involves the small blood vessels within the heart, resulting in chest pain and poor outcomes independent of significant coronary artery disease. However, the available traditional techniques for detecting CMD, such as coronary flow reserve and angiographic imaging, suffer from limitations associated with the procedures' costly nature, complexity, and lack of widespread availability. Recent developments in non-invasive approaches and the incorporation of machine learning (ML) and explainable artificial intelligence (XAI) provide potential solutions. 
