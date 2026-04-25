@@ -1,1 +1,191 @@
+!pip install lime
+!pip install lime --upgrade --no-cache-dir
+
+import pandas as pd
+import numpy as np
+
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score, StratifiedKFold
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from xgboost import XGBClassifier
+
+import joblib
+import shap
+from lime.lime_tabular import LimeTabularExplainer
+
+pd.read_csv("heart (2).csv")
+import pandas as pd
+
+df = pd.read_csv("heart (2).csv")  # fix path/name here
+TARGET = "HeartDisease"
+
+X = df.drop(TARGET, axis=1)
+y = df[TARGET]
+num_cols = X.select_dtypes(include=["int64", "float64"]).columns.tolist()
+cat_cols = X.select_dtypes(include=["object"]).columns.tolist()
+
+numeric_transformer = Pipeline([
+    ("scaler", StandardScaler())
+])
+
+categorical_transformer = Pipeline([
+    ("encoder", OneHotEncoder(handle_unknown="ignore", sparse_output=False))
+])
+
+preprocessor = ColumnTransformer([
+    ("num", numeric_transformer, num_cols),
+    ("cat", categorical_transformer, cat_cols)
+])
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, stratify=y, random_state=42
+)
+models = {
+    "RandomForest": RandomForestClassifier(class_weight="balanced", random_state=42),
+    "SVM": SVC(probability=True, class_weight="balanced"),
+    "XGBoost": XGBClassifier(eval_metric='logloss', use_label_encoder=False)
+}
+
+pipelines = {
+    name: Pipeline([
+        ("preprocessor", preprocessor),
+        ("model", model)
+    ])
+    for name, model in models.items()
+}
+for name, pipeline in pipelines.items():
+    print(f"Training {name}...")
+
+    grid = GridSearchCV(
+        pipeline,
+        param_grids[name],
+        cv=cv,
+        scoring="roc_auc",
+        n_jobs=-1
+    )
+
+    grid.fit(X_train, y_train)
+
+    best_models[name] = grid.best_estimator_
+
+    print(f"Best params for {name}: {grid.best_params_}")
+
+results = []
+
+for name, model in best_models.items():
+    y_pred = model.predict(X_test)
+    y_proba = model.predict_proba(X_test)[:, 1]
+
+    print(f"\n{name}")
+    print(classification_report(y_test, y_pred))
+    print(confusion_matrix(y_test, y_pred))
+
+    roc = roc_auc_score(y_test, y_proba)
+    print("ROC-AUC:", roc)
+
+    results.append((name, roc))
+
+    print(results)
+
+best_model_name = sorted(results, key=lambda x: x[1], reverse=True)[0][0]
+best_model = best_models[best_model_name]
+
+print("Best Model:", best_model_name)
+joblib.dump(best_model, "cmd_model.pkl")
+model_step = best_model.named_steps["model"]
+preprocessor_step = best_model.named_steps["preprocessor"]
+X_train_transformed = preprocessor_step.transform(X_train)
+X_test_transformed = preprocessor_step.transform(X_test)
+
+cat_feature_names = preprocessor_step.named_transformers_["cat"]["encoder"].get_feature_names_out(cat_cols)
+feature_names = list(num_cols) + list(cat_feature_names)
+
+if best_model_name in ["RandomForest", "XGBoost"]:
+    explainer = shap.TreeExplainer(model_step)
+    shap_values = explainer.shap_values(X_test_transformed)
+
+    shap.summary_plot(shap_values, X_test_transformed, feature_names=feature_names)
+
+else:
+    # fallback for non-tree models
+    explainer = shap.KernelExplainer(model_step.predict_proba, X_train_transformed[:100])
+    shap_values = explainer.shap_values(X_test_transformed[:50])
+
+    shap.summary_plot(shap_values, X_test_transformed[:50], feature_names=feature_names)
+
+explainer_lime = LimeTabularExplainer(
+    training_data=X_train_transformed,
+    feature_names=feature_names,
+    class_names=["No Disease", "Disease"],
+    mode="classification"
+)
+
+# Explain a sample
+sample_idx = 0
+exp = explainer_lime.explain_instance(
+    X_test_transformed[sample_idx],
+    model_step.predict_proba
+)
+
+exp.show_in_notebook(show_table=True)
+
+def predict_new(data_dict):
+    model = joblib.load("cmd_model.pkl")
+    new_df = pd.DataFrame([data_dict])
+    pred = model.predict(new_df)[0]
+    prob = model.predict_proba(new_df)[0][1]
+
+    return {"prediction": int(pred), "probability": float(prob)}
+
+from sklearn.metrics import accuracy_score
+
+print("Accuracy:", accuracy_score(y_test, y_pred))
+
+from sklearn.metrics import classification_report
+
+print(classification_report(y_test, y_pred))
+
+from sklearn.metrics import confusion_matrix
+
+print(confusion_matrix(y_test, y_pred))
+
+from sklearn.metrics import roc_auc_score
+
+print("ROC-AUC:", roc_auc_score(y_test, y_proba))
+
+print("Accuracy:", accuracy_score(y_test, y_pred))
+print("\nClassification Report:\n", classification_report(y_test, y_pred))
+print("\nConfusion Matrix:\n", confusion_matrix(y_test, y_pred))
+print("\nROC-AUC:", roc_auc_score(y_test, y_proba))
+
+import pandas as pd
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+
+results = []
+
+for name, model in best_models.items():
+    y_pred = model.predict(X_test)
+    y_proba = model.predict_proba(X_test)[:, 1]
+
+    results.append({
+        "Model": name,
+        "Accuracy": accuracy_score(y_test, y_pred),
+        "Precision": precision_score(y_test, y_pred),
+        "Recall": recall_score(y_test, y_pred),
+        "F1 Score": f1_score(y_test, y_pred),
+        "ROC-AUC": roc_auc_score(y_test, y_proba)
+    })
+
+results_df = pd.DataFrame(results)
+
+# Sort by best model (optional)
+results_df = results_df.sort_values(by="ROC-AUC", ascending=False)
+
+print(results_df)
+
 
